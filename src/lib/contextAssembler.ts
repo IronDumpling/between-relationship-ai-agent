@@ -98,12 +98,13 @@ function formatMessages(messages: ExtractedMessage[]): string {
  * Assemble a context-budgeted system prompt for reasoning/learning calls.
  *
  * Injection priority:
- *   Hard Rules (never cut) > Identity > Comm Style > Contact Memory > Contact Persona > Conversation
+ *   Hard Rules (never cut) > Identity > Comm Style > User Memory > Contact Memory > Contact Persona > Conversation
  *
  * contactMemory: raw content of contacts/{id}/memory.md — factual observations.
  *   Most recent entries (bottom of file) are preserved when truncated.
  * relationshipState: raw JSON content of contacts/{id}/relationship.json.
  *   Only the coaching_note field is injected, appended to Contact Profile.
+ * userMemory: raw content of user/memory.md — factual self-knowledge (150 token budget).
  */
 export function buildContext(
   userPersonaFull: string,
@@ -112,6 +113,7 @@ export function buildContext(
   budgets: Partial<ContextBudgets> = {},
   contactMemory: string | null = null,
   relationshipState: string | null = null,
+  userMemory: string | null = null,
 ): AssembledContext {
   const b: ContextBudgets = { ...DEFAULT_BUDGETS, ...budgets };
 
@@ -179,11 +181,20 @@ export function buildContext(
   const conversation = truncateToTokens(convRaw, b.conversationMax);
   const convTokensUsed = estimateTokens(conversation);
 
+  // ── User memory (factual self-knowledge, max 150 tokens) ─────────────────
+  let userMemorySection = "";
+  if (userMemory && userMemory.trim()) {
+    userMemorySection = truncateToTokens(userMemory.trim(), 150);
+  }
+
   // ── Assemble system prompt ────────────────────────────────────────────────
   const parts: string[] = [];
 
   if (userCore) {
     parts.push("## User Profile\n" + userCore);
+  }
+  if (userMemorySection) {
+    parts.push("## User Memory\n" + userMemorySection);
   }
   if (memory) {
     parts.push("## Contact Memory\n" + memory);

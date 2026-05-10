@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Window } from "@tauri-apps/api/window";
 import { useCaptureStore } from "../../../lib/captureStore";
 
 interface Props {
@@ -19,8 +18,7 @@ export default function CaptureView({ onGoToContacts, activeContactName }: Props
   }, []);
 
   async function openSetup() {
-    const main = await Window.getByLabel("main");
-    if (main) { await main.show(); await main.setFocus(); }
+    await invoke("open_onboarding");
   }
 
   const result = state.analyzeResult;

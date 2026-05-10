@@ -364,6 +364,11 @@ async def merge_persona(req: MergeRequest):
     )
 
 
+class RelationshipBuildRequest(BaseModel):
+    compressed_evidence: dict        # output from /compress
+    persona_summary: str = ""        # Hard Rules + Relationship Behavior from persona
+
+
 class RelationshipRequest(BaseModel):
     current_state: str = ""          # current relationship.json content, or ""
     compressed_evidence: dict        # output from /compress
@@ -419,6 +424,50 @@ async def update_relationship(req: RelationshipRequest):
         state=data.get("state", "getting_acquainted"),
         state_changed=bool(data.get("state_changed", False)),
         previous_state=data.get("previous_state"),
+        evidence=data.get("evidence", []),
+        trajectory=data.get("trajectory", "unclear"),
+        coaching_note=data.get("coaching_note", ""),
+        confidence=float(data.get("confidence", 0.5)),
+        updated_date=data.get("updated_date", date.today().isoformat()),
+        model=response.model,
+    )
+
+
+@router.post("/relationship_build", response_model=RelationshipState)
+async def build_relationship(req: RelationshipBuildRequest):
+    """
+    Initialize relationship state for a new contact (no prior relationship.json).
+    Uses relationship/builder.md instead of updater.md.
+    Uses Reasoning Layer (stateless). Output is written to relationship.json by frontend.
+    """
+    from datetime import date
+
+    builder_prompt = _load_prompt("relationship/builder.md")
+    evidence_str = json.dumps(req.compressed_evidence, ensure_ascii=False, indent=2)
+    user_content = "\n".join([
+        "=== CONVERSATION EVIDENCE ===",
+        evidence_str,
+        "",
+        "=== CONTACT PERSONA SUMMARY ===",
+        req.persona_summary or "none",
+    ])
+
+    messages = [
+        {"role": "system", "content": builder_prompt},
+        {"role": "user", "content": user_content},
+    ]
+    response = await complete_with_fallback(
+        REASONING_MODELS,
+        messages,
+        endpoint="reasoning",
+        temperature=0.3,
+        max_tokens=512,
+    )
+    data = _parse_json(response.choices[0].message.content or "")
+    return RelationshipState(
+        state=data.get("state", "getting_acquainted"),
+        state_changed=False,
+        previous_state=None,
         evidence=data.get("evidence", []),
         trajectory=data.get("trajectory", "unclear"),
         coaching_note=data.get("coaching_note", ""),

@@ -308,6 +308,26 @@ export async function updateRelationship(
   return res.json();
 }
 
+/** Initialize relationship state for a new contact (Reasoning Layer, uses builder.md) */
+export async function buildRelationship(
+  compressedEvidence: CompressedEvidence,
+  personaSummary: string,
+): Promise<RelationshipState> {
+  const res = await fetch(`${BASE_URL}/v1/intelligence/relationship_build`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      compressed_evidence: compressedEvidence,
+      persona_summary: personaSummary,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Relationship build error ${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
 /** Listen for Ctrl+Shift+B capture events emitted by Rust */
 export function onCaptureTriggered(
   callback: (event: CaptureEvent) => void,

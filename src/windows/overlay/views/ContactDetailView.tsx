@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { captureStore, useCaptureStore, PERSONA_UPDATE_THRESHOLD } from "../../../lib/captureStore";
-import { compressConversation, mergePersona, updateRelationship } from "../../../lib/gateway";
+import { compressConversation, mergePersona, updateRelationship, buildRelationship } from "../../../lib/gateway";
 import { getContactMeta, updateContactMeta } from "../../../lib/contactRegistry";
 import { extractSection, truncateToTokens } from "../../../lib/contextAssembler";
 
@@ -109,10 +109,13 @@ export default function ContactDetailView({ contactId, onDeleted }: Props) {
       }
 
       // Step 4: Merge persona with compressed evidence
+      // First build (version === 0): use "full" so Identity + Hard Rules get populated from evidence.
+      // Subsequent updates: dynamic_only preserves stable layers.
+      const patchMode = version === 0 ? "full" : "dynamic_only";
       const existingPersona = await invoke<string>("read_file", {
         relativePath: `contacts/${contactId}/persona.md`,
       });
-      const mergeResult = await mergePersona(existingPersona ?? "", evidence, "dynamic_only");
+      const mergeResult = await mergePersona(existingPersona ?? "", evidence, patchMode);
 
       // Step 5: Atomic write (tmp → rename)
       await invoke("write_file", {
@@ -138,8 +141,10 @@ export default function ContactDetailView({ contactId, onDeleted }: Props) {
       });
 
       // Step 8: Relationship state update (non-fatal)
+      // First time: use builder.md to initialize from scratch.
+      // Subsequent: use updater.md for incremental updates.
       try {
-        const currentRelationship = await invoke<string>("read_file", {
+        const currentRelationshipRaw = await invoke<string>("read_file", {
           relativePath: `contacts/${contactId}/relationship.json`,
         });
         const personaSummary = [
@@ -149,11 +154,10 @@ export default function ContactDetailView({ contactId, onDeleted }: Props) {
           .filter(Boolean)
           .join("\n\n");
 
-        const relationship = await updateRelationship(
-          currentRelationship ?? "",
-          evidence,
-          personaSummary,
-        );
+        const relationship = currentRelationshipRaw?.trim()
+          ? await updateRelationship(currentRelationshipRaw, evidence, personaSummary)
+          : await buildRelationship(evidence, personaSummary);
+
         await invoke("write_file", {
           relativePath: `contacts/${contactId}/relationship.json`,
           content: JSON.stringify(relationship, null, 2),

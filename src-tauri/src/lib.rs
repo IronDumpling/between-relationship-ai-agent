@@ -43,6 +43,7 @@ pub fn run() {
             shell::show_overlay,
             shell::hide_overlay,
             shell::resize_overlay,
+            shell::open_onboarding,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
